@@ -25,6 +25,7 @@ extern int smp_num_siblings;
 extern int num_processors;
 extern int disabled_cpus;
 extern cpumask_t cpu_sibling_map[];
+extern cpumask_t cpu_llc_shared_map[];
 extern cpumask_t cpu_core_map[];
 extern cpumask_t cpu_foreign_map[];
 
@@ -76,6 +77,8 @@ extern int __cpu_logical_map[NR_CPUS];
 #define SMP_CALL_FUNCTION	BIT(ACTION_CALL_FUNCTION)
 #define SMP_IRQ_WORK		BIT(ACTION_IRQ_WORK)
 #define SMP_CLEAR_VECTOR	BIT(ACTION_CLEAR_VECTOR)
+
+struct seq_file;
 
 struct secondary_data {
 	unsigned long stack;

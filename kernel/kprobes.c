@@ -946,7 +946,7 @@ static int proc_kprobes_optimization_handler(const struct ctl_table *table,
 	return ret;
 }
 
-static struct ctl_table kprobe_sysctls[] = {
+static const struct ctl_table kprobe_sysctls[] = {
 	{
 		.procname	= "kprobes-optimization",
 		.data		= &sysctl_kprobes_optimization,
@@ -1547,7 +1547,7 @@ static int check_kprobe_address_safe(struct kprobe *p,
 	/* Ensure the address is in a text area, and find a module if exists. */
 	*probed_mod = NULL;
 	if (!core_kernel_text((unsigned long) p->addr)) {
-		guard(preempt)();
+		guard(rcu)();
 		*probed_mod = __module_text_address((unsigned long) p->addr);
 		if (!(*probed_mod))
 			return -EINVAL;

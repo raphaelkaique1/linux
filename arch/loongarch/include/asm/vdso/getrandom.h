@@ -20,17 +20,12 @@ static __always_inline ssize_t getrandom_syscall(void *_buffer, size_t _len, uns
 
 	asm volatile(
 	"      syscall 0\n"
-	: "+r" (ret)
+	: "=r" (ret)
 	: "r" (nr), "r" (buffer), "r" (len), "r" (flags)
 	: "$t0", "$t1", "$t2", "$t3", "$t4", "$t5", "$t6", "$t7", "$t8",
 	  "memory");
 
 	return ret;
-}
-
-static __always_inline const struct vdso_rng_data *__arch_get_vdso_rng_data(void)
-{
-	return &_loongarch_data.rng_data;
 }
 
 #endif /* !__ASSEMBLY__ */

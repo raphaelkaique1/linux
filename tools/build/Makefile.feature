@@ -87,7 +87,6 @@ FEATURE_TESTS_BASIC :=                  \
         libtracefs                      \
         libcpupower                     \
         libcrypto                       \
-        libunwind                       \
         pthread-attr-setaffinity-np     \
         pthread-barrier     		\
         reallocarray                    \
@@ -135,7 +134,8 @@ FEATURE_TESTS_EXTRA :=                  \
          libbpf-bpf_create_map		\
          libpfm4                        \
          libdebuginfod			\
-         clang-bpf-co-re
+         clang-bpf-co-re		\
+         bpftool-skeletons
 
 
 FEATURE_TESTS ?= $(FEATURE_TESTS_BASIC)
@@ -147,15 +147,12 @@ endif
 FEATURE_DISPLAY ?=              \
          libdw                  \
          glibc                  \
-         libbfd                 \
-         libbfd-buildid		\
          libelf                 \
          libnuma                \
          numa_num_possible_cpus \
          libperl                \
          libpython              \
          libcrypto              \
-         libunwind              \
          libcapstone            \
          llvm-perf              \
          zlib                   \

@@ -111,6 +111,8 @@
 
 /* bits unique to S1G beacon */
 #define IEEE80211_S1G_BCN_NEXT_TBTT	0x100
+#define IEEE80211_S1G_BCN_CSSID		0x200
+#define IEEE80211_S1G_BCN_ANO		0x400
 
 /* see 802.11ah-2016 9.9 NDP CMAC frames */
 #define IEEE80211_S1G_1MHZ_NDP_BITS	25
@@ -152,9 +154,6 @@
 #define IEEE80211_NDP_2M_PREQ_RTYPE_S                  36
 
 #define IEEE80211_ANO_NETTYPE_WILD              15
-
-/* bits unique to S1G beacon */
-#define IEEE80211_S1G_BCN_NEXT_TBTT    0x100
 
 /* control extension - for IEEE80211_FTYPE_CTL | IEEE80211_STYPE_CTL_EXT */
 #define IEEE80211_CTL_EXT_POLL		0x2000
@@ -625,6 +624,42 @@ static inline bool ieee80211_is_s1g_beacon(__le16 fc)
 	return (fc & cpu_to_le16(IEEE80211_FCTL_FTYPE |
 				 IEEE80211_FCTL_STYPE)) ==
 	       cpu_to_le16(IEEE80211_FTYPE_EXT | IEEE80211_STYPE_S1G_BEACON);
+}
+
+/**
+ * ieee80211_s1g_has_next_tbtt - check if IEEE80211_S1G_BCN_NEXT_TBTT
+ * @fc: frame control bytes in little-endian byteorder
+ * Return: whether or not the frame contains the variable-length
+ *	next TBTT field
+ */
+static inline bool ieee80211_s1g_has_next_tbtt(__le16 fc)
+{
+	return ieee80211_is_s1g_beacon(fc) &&
+		(fc & cpu_to_le16(IEEE80211_S1G_BCN_NEXT_TBTT));
+}
+
+/**
+ * ieee80211_s1g_has_ano - check if IEEE80211_S1G_BCN_ANO
+ * @fc: frame control bytes in little-endian byteorder
+ * Return: whether or not the frame contains the variable-length
+ *	ANO field
+ */
+static inline bool ieee80211_s1g_has_ano(__le16 fc)
+{
+	return ieee80211_is_s1g_beacon(fc) &&
+		(fc & cpu_to_le16(IEEE80211_S1G_BCN_ANO));
+}
+
+/**
+ * ieee80211_s1g_has_cssid - check if IEEE80211_S1G_BCN_CSSID
+ * @fc: frame control bytes in little-endian byteorder
+ * Return: whether or not the frame contains the variable-length
+ *	compressed SSID field
+ */
+static inline bool ieee80211_s1g_has_cssid(__le16 fc)
+{
+	return ieee80211_is_s1g_beacon(fc) &&
+		(fc & cpu_to_le16(IEEE80211_S1G_BCN_CSSID));
 }
 
 /**
@@ -1243,17 +1278,41 @@ struct ieee80211_ext {
 			u8 sa[ETH_ALEN];
 			__le32 timestamp;
 			u8 change_seq;
-			u8 variable[0];
+			u8 variable[];
 		} __packed s1g_beacon;
-		struct {
-			u8 sa[ETH_ALEN];
-			__le32 timestamp;
-			u8 change_seq;
-			u8 next_tbtt[3];
-			u8 variable[0];
-		} __packed s1g_short_beacon;
 	} u;
 } __packed __aligned(2);
+
+/**
+ * ieee80211_s1g_optional_len - determine length of optional S1G beacon fields
+ * @fc: frame control bytes in little-endian byteorder
+ * Return: total length in bytes of the optional fixed-length fields
+ *
+ * S1G beacons may contain up to three optional fixed-length fields that
+ * precede the variable-length elements. Whether these fields are present
+ * is indicated by flags in the frame control field.
+ *
+ * From IEEE 802.11-2024 section 9.3.4.3:
+ *  - Next TBTT field may be 0 or 3 bytes
+ *  - Short SSID field may be 0 or 4 bytes
+ *  - Access Network Options (ANO) field may be 0 or 1 byte
+ */
+static inline size_t
+ieee80211_s1g_optional_len(__le16 fc)
+{
+	size_t len = 0;
+
+	if (ieee80211_s1g_has_next_tbtt(fc))
+		len += 3;
+
+	if (ieee80211_s1g_has_cssid(fc))
+		len += 4;
+
+	if (ieee80211_s1g_has_ano(fc))
+		len += 1;
+
+	return len;
+}
 
 #define IEEE80211_TWT_CONTROL_NDP			BIT(0)
 #define IEEE80211_TWT_CONTROL_RESP_MODE			BIT(1)
@@ -1477,7 +1536,7 @@ struct ieee80211_mgmt {
 					u8 action_code;
 					u8 dialog_token;
 					__le16 capability;
-					u8 variable[0];
+					u8 variable[];
 				} __packed tdls_discover_resp;
 				struct {
 					u8 action_code;
@@ -1526,7 +1585,7 @@ struct ieee80211_mgmt {
 				struct {
 					u8 action_code;
 					u8 dialog_token;
-					u8 status_code;
+					__le16 status_code;
 					u8 variable[];
 				} __packed ttlm_res;
 				struct {
@@ -1543,6 +1602,10 @@ struct ieee80211_mgmt {
 					u8 count;
 					u8 variable[];
 				} __packed ml_reconf_resp;
+				struct {
+					u8 action_code;
+					u8 variable[];
+				} __packed epcs;
 			} u;
 		} __packed action;
 		DECLARE_FLEX_ARRAY(u8, body); /* Generic frame body */
@@ -1658,35 +1721,35 @@ struct ieee80211_tdls_data {
 		struct {
 			u8 dialog_token;
 			__le16 capability;
-			u8 variable[0];
+			u8 variable[];
 		} __packed setup_req;
 		struct {
 			__le16 status_code;
 			u8 dialog_token;
 			__le16 capability;
-			u8 variable[0];
+			u8 variable[];
 		} __packed setup_resp;
 		struct {
 			__le16 status_code;
 			u8 dialog_token;
-			u8 variable[0];
+			u8 variable[];
 		} __packed setup_cfm;
 		struct {
 			__le16 reason_code;
-			u8 variable[0];
+			u8 variable[];
 		} __packed teardown;
 		struct {
 			u8 dialog_token;
-			u8 variable[0];
+			u8 variable[];
 		} __packed discover_req;
 		struct {
 			u8 target_channel;
 			u8 oper_class;
-			u8 variable[0];
+			u8 variable[];
 		} __packed chan_switch_req;
 		struct {
 			__le16 status_code;
-			u8 variable[0];
+			u8 variable[];
 		} __packed chan_switch_resp;
 	} u;
 } __packed;
@@ -2321,6 +2384,7 @@ struct ieee80211_eht_cap_elem {
 #define IEEE80211_EHT_OPER_EHT_DEF_PE_DURATION	                0x04
 #define IEEE80211_EHT_OPER_GROUP_ADDRESSED_BU_IND_LIMIT         0x08
 #define IEEE80211_EHT_OPER_GROUP_ADDRESSED_BU_IND_EXP_MASK      0x30
+#define IEEE80211_EHT_OPER_MCS15_DISABLE                        0x40
 
 /**
  * struct ieee80211_eht_operation - eht operation element
@@ -3109,6 +3173,11 @@ ieee80211_he_spr_size(const u8 *he_spr_ie)
 #define	IEEE80211_EHT_MAC_CAP0_MAX_MPDU_LEN_11454	        2
 
 #define IEEE80211_EHT_MAC_CAP1_MAX_AMPDU_LEN_MASK		0x01
+#define IEEE80211_EHT_MAC_CAP1_EHT_TRS				0x02
+#define IEEE80211_EHT_MAC_CAP1_TXOP_RET				0x04
+#define IEEE80211_EHT_MAC_CAP1_TWO_BQRS				0x08
+#define IEEE80211_EHT_MAC_CAP1_EHT_LINK_ADAPT_MASK		0x30
+#define IEEE80211_EHT_MAC_CAP1_UNSOL_EPCS_PRIO_ACCESS		0x40
 
 /* EHT PHY capabilities as defined in P802.11be_D2.0 section 9.4.2.313.3 */
 #define IEEE80211_EHT_PHY_CAP0_320MHZ_IN_6GHZ			0x02
@@ -4077,6 +4146,9 @@ enum ieee80211_tdls_actioncode {
 
 /* Defines support for enhanced multi-bssid advertisement*/
 #define WLAN_EXT_CAPA11_EMA_SUPPORT	BIT(3)
+
+/* Enable Beacon Protection */
+#define WLAN_EXT_CAPA11_BCN_PROTECT	BIT(4)
 
 /* TDLS specific payload type in the LLC/SNAP header */
 #define WLAN_TDLS_SNAP_RFTYPE	0x2
@@ -5570,6 +5642,9 @@ static inline bool ieee80211_mle_reconf_sta_prof_size_ok(const u8 *data,
 	       fixed + prof->sta_info_len - 1 <= len;
 }
 
+#define IEEE80211_MLE_STA_EPCS_CONTROL_LINK_ID			0x000f
+#define IEEE80211_EPCS_ENA_RESP_BODY_LEN                        3
+
 static inline bool ieee80211_tid_to_link_map_size_ok(const u8 *data, size_t len)
 {
 	const struct ieee80211_ttlm_elem *t2l = (const void *)data;
@@ -5601,6 +5676,80 @@ static inline bool ieee80211_tid_to_link_map_size_ok(const u8 *data, size_t len)
 	}
 
 	return len >= fixed + elem_len;
+}
+
+/**
+ * ieee80211_emlsr_pad_delay_in_us - Fetch the EMLSR Padding delay
+ *	in microseconds
+ * @eml_cap: EML capabilities field value from common info field of
+ *	the Multi-link element
+ * Return: the EMLSR Padding delay (in microseconds) encoded in the
+ *	EML Capabilities field
+ */
+
+static inline u32 ieee80211_emlsr_pad_delay_in_us(u16 eml_cap)
+{
+	/* IEEE Std 802.11be-2024 Table 9-417i—Encoding of the EMLSR
+	 * Padding Delay subfield.
+	 */
+	u32 pad_delay = u16_get_bits(eml_cap,
+				     IEEE80211_EML_CAP_EMLSR_PADDING_DELAY);
+
+	if (!pad_delay ||
+	    pad_delay > IEEE80211_EML_CAP_EMLSR_PADDING_DELAY_256US)
+		return 0;
+
+	return 32 * (1 << (pad_delay - 1));
+}
+
+/**
+ * ieee80211_emlsr_trans_delay_in_us - Fetch the EMLSR Transition
+ *	delay in microseconds
+ * @eml_cap: EML capabilities field value from common info field of
+ *	the Multi-link element
+ * Return: the EMLSR Transition delay (in microseconds) encoded in the
+ *	EML Capabilities field
+ */
+
+static inline u32 ieee80211_emlsr_trans_delay_in_us(u16 eml_cap)
+{
+	/* IEEE Std 802.11be-2024 Table 9-417j—Encoding of the EMLSR
+	 * Transition Delay subfield.
+	 */
+	u32 trans_delay =
+		u16_get_bits(eml_cap,
+			     IEEE80211_EML_CAP_EMLSR_TRANSITION_DELAY);
+
+	/* invalid values also just use 0 */
+	if (!trans_delay ||
+	    trans_delay > IEEE80211_EML_CAP_EMLSR_TRANSITION_DELAY_256US)
+		return 0;
+
+	return 16 * (1 << (trans_delay - 1));
+}
+
+/**
+ * ieee80211_eml_trans_timeout_in_us - Fetch the EMLSR Transition
+ *	timeout value in microseconds
+ * @eml_cap: EML capabilities field value from common info field of
+ *	the Multi-link element
+ * Return: the EMLSR Transition timeout (in microseconds) encoded in
+ *	the EML Capabilities field
+ */
+
+static inline u32 ieee80211_eml_trans_timeout_in_us(u16 eml_cap)
+{
+	/* IEEE Std 802.11be-2024 Table 9-417m—Encoding of the
+	 * Transition Timeout subfield.
+	 */
+	u8 timeout = u16_get_bits(eml_cap,
+				  IEEE80211_EML_CAP_TRANSITION_TIMEOUT);
+
+	/* invalid values also just use 0 */
+	if (!timeout || timeout > IEEE80211_EML_CAP_TRANSITION_TIMEOUT_128TU)
+		return 0;
+
+	return 128 * (1 << (timeout - 1));
 }
 
 #define for_each_mle_subelement(_elem, _data, _len)			\

@@ -569,6 +569,11 @@ __bpf_kfunc u32 bpf_fentry_test9(u32 *a)
 	return *a;
 }
 
+int noinline bpf_fentry_test10(const void *a)
+{
+	return (long)a;
+}
+
 void noinline bpf_fentry_test_sinfo(struct skb_shared_info *sinfo)
 {
 }
@@ -660,11 +665,8 @@ static void *bpf_test_init(const union bpf_attr *kattr, u32 user_size,
 	void __user *data_in = u64_to_user_ptr(kattr->test.data_in);
 	void *data;
 
-	if (size < ETH_HLEN || size > PAGE_SIZE - headroom - tailroom)
+	if (user_size < ETH_HLEN || user_size > PAGE_SIZE - headroom - tailroom)
 		return ERR_PTR(-EINVAL);
-
-	if (user_size > size)
-		return ERR_PTR(-EMSGSIZE);
 
 	size = SKB_DATA_ALIGN(size);
 	data = kzalloc(size + headroom + tailroom, GFP_USER);
@@ -702,7 +704,8 @@ int bpf_prog_test_run_tracing(struct bpf_prog *prog,
 		    bpf_fentry_test6(16, (void *)17, 18, 19, (void *)20, 21) != 111 ||
 		    bpf_fentry_test7((struct bpf_fentry_test_t *)0) != 0 ||
 		    bpf_fentry_test8(&arg) != 0 ||
-		    bpf_fentry_test9(&retval) != 0)
+		    bpf_fentry_test9(&retval) != 0 ||
+		    bpf_fentry_test10((void *)0) != 0)
 			goto out;
 		break;
 	case BPF_MODIFY_RETURN:

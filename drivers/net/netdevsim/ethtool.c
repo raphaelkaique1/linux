@@ -74,7 +74,7 @@ static void nsim_get_ringparam(struct net_device *dev,
 	memcpy(ring, &ns->ethtool.ring, sizeof(ns->ethtool.ring));
 	kernel_ring->hds_thresh_max = NSIM_HDS_THRESHOLD_MAX;
 
-	if (kernel_ring->tcp_data_split == ETHTOOL_TCP_DATA_SPLIT_UNKNOWN)
+	if (dev->cfg->hds_config == ETHTOOL_TCP_DATA_SPLIT_UNKNOWN)
 		kernel_ring->tcp_data_split = ETHTOOL_TCP_DATA_SPLIT_ENABLED;
 }
 
@@ -107,10 +107,8 @@ nsim_set_channels(struct net_device *dev, struct ethtool_channels *ch)
 	struct netdevsim *ns = netdev_priv(dev);
 	int err;
 
-	netdev_lock(dev);
 	err = netif_set_real_num_queues(dev, ch->combined_count,
 					ch->combined_count);
-	netdev_unlock(dev);
 	if (err)
 		return err;
 
@@ -184,9 +182,11 @@ static const struct ethtool_ops nsim_ethtool_ops = {
 
 static void nsim_ethtool_ring_init(struct netdevsim *ns)
 {
+	ns->ethtool.ring.rx_pending = 512;
 	ns->ethtool.ring.rx_max_pending = 4096;
 	ns->ethtool.ring.rx_jumbo_max_pending = 4096;
 	ns->ethtool.ring.rx_mini_max_pending = 4096;
+	ns->ethtool.ring.tx_pending = 512;
 	ns->ethtool.ring.tx_max_pending = 4096;
 }
 

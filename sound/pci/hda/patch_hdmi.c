@@ -1511,8 +1511,8 @@ static void update_eld(struct hda_codec *codec,
 
 	if (eld->eld_valid) {
 		if (eld->eld_size <= 0 ||
-		    snd_hdmi_parse_eld(codec, &eld->info, eld->eld_buffer,
-				       eld->eld_size) < 0) {
+		    snd_parse_eld(hda_codec_dev(codec), &eld->info,
+				  eld->eld_buffer, eld->eld_size) < 0) {
 			eld->eld_valid = false;
 			if (repoll) {
 				schedule_delayed_work(&per_pin->work,
@@ -1555,7 +1555,7 @@ static void update_eld(struct hda_codec *codec,
 		pcm_jack = pin_idx_to_pcm_jack(codec, per_pin);
 
 	if (eld->eld_valid)
-		snd_hdmi_show_eld(codec, &eld->info);
+		snd_show_eld(hda_codec_dev(codec), &eld->info);
 
 	eld_changed = (pin_eld->eld_valid != eld->eld_valid);
 	eld_changed |= (pin_eld->monitor_present != eld->monitor_present);
@@ -4551,6 +4551,7 @@ HDA_CODEC_ENTRY(0x10de002e, "Tegra186 HDMI/DP1", patch_tegra_hdmi),
 HDA_CODEC_ENTRY(0x10de002f, "Tegra194 HDMI/DP2", patch_tegra_hdmi),
 HDA_CODEC_ENTRY(0x10de0030, "Tegra194 HDMI/DP3", patch_tegra_hdmi),
 HDA_CODEC_ENTRY(0x10de0031, "Tegra234 HDMI/DP", patch_tegra234_hdmi),
+HDA_CODEC_ENTRY(0x10de0034, "Tegra264 HDMI/DP",	patch_tegra234_hdmi),
 HDA_CODEC_ENTRY(0x10de0040, "GPU 40 HDMI/DP",	patch_nvhdmi),
 HDA_CODEC_ENTRY(0x10de0041, "GPU 41 HDMI/DP",	patch_nvhdmi),
 HDA_CODEC_ENTRY(0x10de0042, "GPU 42 HDMI/DP",	patch_nvhdmi),
@@ -4610,6 +4611,17 @@ HDA_CODEC_ENTRY(0x11069f80, "VX900 HDMI/DP",	patch_via_hdmi),
 HDA_CODEC_ENTRY(0x11069f81, "VX900 HDMI/DP",	patch_via_hdmi),
 HDA_CODEC_ENTRY(0x11069f84, "VX11 HDMI/DP",	patch_generic_hdmi),
 HDA_CODEC_ENTRY(0x11069f85, "VX11 HDMI/DP",	patch_generic_hdmi),
+HDA_CODEC_ENTRY(0x1d179f86, "ZX-100S HDMI/DP",	patch_gf_hdmi),
+HDA_CODEC_ENTRY(0x1d179f87, "ZX-100S HDMI/DP",	patch_gf_hdmi),
+HDA_CODEC_ENTRY(0x1d179f88, "KX-5000 HDMI/DP",	patch_gf_hdmi),
+HDA_CODEC_ENTRY(0x1d179f89, "KX-5000 HDMI/DP",	patch_gf_hdmi),
+HDA_CODEC_ENTRY(0x1d179f8a, "KX-6000 HDMI/DP",	patch_gf_hdmi),
+HDA_CODEC_ENTRY(0x1d179f8b, "KX-6000 HDMI/DP",	patch_gf_hdmi),
+HDA_CODEC_ENTRY(0x1d179f8c, "KX-6000G HDMI/DP", patch_gf_hdmi),
+HDA_CODEC_ENTRY(0x1d179f8d, "KX-6000G HDMI/DP", patch_gf_hdmi),
+HDA_CODEC_ENTRY(0x1d179f8e, "KX-7000 HDMI/DP",	patch_gf_hdmi),
+HDA_CODEC_ENTRY(0x1d179f8f, "KX-7000 HDMI/DP",	patch_gf_hdmi),
+HDA_CODEC_ENTRY(0x1d179f90, "KX-7000 HDMI/DP",	patch_gf_hdmi),
 HDA_CODEC_ENTRY(0x80860054, "IbexPeak HDMI",	patch_i915_cpt_hdmi),
 HDA_CODEC_ENTRY(0x80862800, "Geminilake HDMI",	patch_i915_glk_hdmi),
 HDA_CODEC_ENTRY(0x80862801, "Bearlake HDMI",	patch_generic_hdmi),
@@ -4640,6 +4652,7 @@ HDA_CODEC_ENTRY(0x8086281e, "Battlemage HDMI",	patch_i915_adlp_hdmi),
 HDA_CODEC_ENTRY(0x8086281f, "Raptor Lake P HDMI",	patch_i915_adlp_hdmi),
 HDA_CODEC_ENTRY(0x80862820, "Lunar Lake HDMI",	patch_i915_adlp_hdmi),
 HDA_CODEC_ENTRY(0x80862822, "Panther Lake HDMI",	patch_i915_adlp_hdmi),
+HDA_CODEC_ENTRY(0x80862823, "Wildcat Lake HDMI",	patch_i915_adlp_hdmi),
 HDA_CODEC_ENTRY(0x80862880, "CedarTrail HDMI",	patch_generic_hdmi),
 HDA_CODEC_ENTRY(0x80862882, "Valleyview2 HDMI",	patch_i915_byt_hdmi),
 HDA_CODEC_ENTRY(0x80862883, "Braswell HDMI",	patch_i915_byt_hdmi),

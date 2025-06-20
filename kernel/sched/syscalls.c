@@ -368,7 +368,7 @@ static int uclamp_validate(struct task_struct *p,
 	 * blocking operation which obviously cannot be done while holding
 	 * scheduler locks.
 	 */
-	static_branch_enable(&sched_uclamp_used);
+	sched_uclamp_enable();
 
 	return 0;
 }
@@ -634,13 +634,14 @@ change:
 		 * Do not allow real-time tasks into groups that have no runtime
 		 * assigned.
 		 */
-		if (rt_bandwidth_enabled() && rt_policy(policy) &&
+		if (rt_group_sched_enabled() &&
+				rt_bandwidth_enabled() && rt_policy(policy) &&
 				task_group(p)->rt_bandwidth.rt_runtime == 0 &&
 				!task_group_is_autogroup(task_group(p))) {
 			retval = -EPERM;
 			goto unlock;
 		}
-#endif
+#endif /* CONFIG_RT_GROUP_SCHED */
 #ifdef CONFIG_SMP
 		if (dl_bandwidth_enabled() && dl_policy(policy) &&
 				!(attr->sched_flags & SCHED_FLAG_SUGOV)) {
@@ -875,7 +876,7 @@ do_sched_setscheduler(pid_t pid, int policy, struct sched_param __user *param)
 {
 	struct sched_param lparam;
 
-	if (!param || pid < 0)
+	if (unlikely(!param || pid < 0))
 		return -EINVAL;
 	if (copy_from_user(&lparam, param, sizeof(struct sched_param)))
 		return -EFAULT;
@@ -984,7 +985,7 @@ SYSCALL_DEFINE3(sched_setattr, pid_t, pid, struct sched_attr __user *, uattr,
 	struct sched_attr attr;
 	int retval;
 
-	if (!uattr || pid < 0 || flags)
+	if (unlikely(!uattr || pid < 0 || flags))
 		return -EINVAL;
 
 	retval = sched_copy_attr(uattr, &attr);
@@ -1049,7 +1050,7 @@ SYSCALL_DEFINE2(sched_getparam, pid_t, pid, struct sched_param __user *, param)
 	struct task_struct *p;
 	int retval;
 
-	if (!param || pid < 0)
+	if (unlikely(!param || pid < 0))
 		return -EINVAL;
 
 	scoped_guard (rcu) {
@@ -1085,8 +1086,8 @@ SYSCALL_DEFINE4(sched_getattr, pid_t, pid, struct sched_attr __user *, uattr,
 	struct task_struct *p;
 	int retval;
 
-	if (!uattr || pid < 0 || usize > PAGE_SIZE ||
-	    usize < SCHED_ATTR_SIZE_VER0 || flags)
+	if (unlikely(!uattr || pid < 0 || usize > PAGE_SIZE ||
+		      usize < SCHED_ATTR_SIZE_VER0 || flags))
 		return -EINVAL;
 
 	scoped_guard (rcu) {
@@ -1127,6 +1128,13 @@ int dl_task_check_affinity(struct task_struct *p, const struct cpumask *mask)
 	 * disabled then we don't care about affinity changes.
 	 */
 	if (!task_has_dl_policy(p) || !dl_bandwidth_enabled())
+		return 0;
+
+	/*
+	 * The special/sugov task isn't part of regular bandwidth/admission
+	 * control so let userspace change affinities.
+	 */
+	if (dl_entity_is_special(&p->dl))
 		return 0;
 
 	/*

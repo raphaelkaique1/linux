@@ -107,8 +107,10 @@ v3d_irq(int irq, void *arg)
 
 		v3d_job_update_stats(&v3d->bin_job->base, V3D_BIN);
 		trace_v3d_bcl_irq(&v3d->drm, fence->seqno);
-		dma_fence_signal(&fence->base);
+
 		v3d->bin_job = NULL;
+		dma_fence_signal(&fence->base);
+
 		status = IRQ_HANDLED;
 	}
 
@@ -118,8 +120,10 @@ v3d_irq(int irq, void *arg)
 
 		v3d_job_update_stats(&v3d->render_job->base, V3D_RENDER);
 		trace_v3d_rcl_irq(&v3d->drm, fence->seqno);
-		dma_fence_signal(&fence->base);
+
 		v3d->render_job = NULL;
+		dma_fence_signal(&fence->base);
+
 		status = IRQ_HANDLED;
 	}
 
@@ -129,15 +133,17 @@ v3d_irq(int irq, void *arg)
 
 		v3d_job_update_stats(&v3d->csd_job->base, V3D_CSD);
 		trace_v3d_csd_irq(&v3d->drm, fence->seqno);
-		dma_fence_signal(&fence->base);
+
 		v3d->csd_job = NULL;
+		dma_fence_signal(&fence->base);
+
 		status = IRQ_HANDLED;
 	}
 
 	/* We shouldn't be triggering these if we have GMP in
 	 * always-allowed mode.
 	 */
-	if (v3d->ver < 71 && (intsts & V3D_INT_GMPV))
+	if (v3d->ver < V3D_GEN_71 && (intsts & V3D_INT_GMPV))
 		dev_err(v3d->drm.dev, "GMP violation\n");
 
 	/* V3D 4.2 wires the hub and core IRQs together, so if we &
@@ -167,8 +173,10 @@ v3d_hub_irq(int irq, void *arg)
 
 		v3d_job_update_stats(&v3d->tfu_job->base, V3D_TFU);
 		trace_v3d_tfu_irq(&v3d->drm, fence->seqno);
-		dma_fence_signal(&fence->base);
+
 		v3d->tfu_job = NULL;
+		dma_fence_signal(&fence->base);
+
 		status = IRQ_HANDLED;
 	}
 
@@ -178,27 +186,59 @@ v3d_hub_irq(int irq, void *arg)
 		u32 axi_id = V3D_READ(V3D_MMU_VIO_ID);
 		u64 vio_addr = ((u64)V3D_READ(V3D_MMU_VIO_ADDR) <<
 				(v3d->va_width - 32));
-		static const char *const v3d41_axi_ids[] = {
-			"L2T",
-			"PTB",
-			"PSE",
-			"TLB",
-			"CLE",
-			"TFU",
-			"MMU",
-			"GMP",
+		static const struct {
+			u32 begin;
+			u32 end;
+			const char *client;
+		} v3d41_axi_ids[] = {
+			{0x00, 0x20, "L2T"},
+			{0x20, 0x21, "PTB"},
+			{0x40, 0x41, "PSE"},
+			{0x60, 0x80, "TLB"},
+			{0x80, 0x88, "CLE"},
+			{0xA0, 0xA1, "TFU"},
+			{0xC0, 0xE0, "MMU"},
+			{0xE0, 0xE1, "GMP"},
+		}, v3d71_axi_ids[] = {
+			{0x00, 0x30, "L2T"},
+			{0x30, 0x38, "CLE"},
+			{0x38, 0x39, "PTB"},
+			{0x39, 0x3A, "PSE"},
+			{0x3A, 0x3B, "CSD"},
+			{0x40, 0x60, "TLB"},
+			{0x60, 0x70, "MMU"},
+			{0x7C, 0x7E, "TFU"},
+			{0x7F, 0x80, "GMP"},
 		};
 		const char *client = "?";
 
 		V3D_WRITE(V3D_MMU_CTL, V3D_READ(V3D_MMU_CTL));
 
-		if (v3d->ver >= 41) {
-			axi_id = axi_id >> 5;
-			if (axi_id < ARRAY_SIZE(v3d41_axi_ids))
-				client = v3d41_axi_ids[axi_id];
+		if (v3d->ver >= V3D_GEN_71) {
+			size_t i;
+
+			axi_id = axi_id & 0x7F;
+			for (i = 0; i < ARRAY_SIZE(v3d71_axi_ids); i++) {
+				if (axi_id >= v3d71_axi_ids[i].begin &&
+				    axi_id < v3d71_axi_ids[i].end) {
+					client = v3d71_axi_ids[i].client;
+					break;
+				}
+			}
+		} else if (v3d->ver >= V3D_GEN_41) {
+			size_t i;
+
+			axi_id = axi_id & 0xFF;
+			for (i = 0; i < ARRAY_SIZE(v3d41_axi_ids); i++) {
+				if (axi_id >= v3d41_axi_ids[i].begin &&
+				    axi_id < v3d41_axi_ids[i].end) {
+					client = v3d41_axi_ids[i].client;
+					break;
+				}
+			}
 		}
 
-		dev_err(v3d->drm.dev, "MMU error from client %s (%d) at 0x%llx%s%s%s\n",
+		dev_err(v3d->drm.dev, "MMU error from client %s (0x%x) at 0x%llx%s%s%s\n",
 			client, axi_id, (long long)vio_addr,
 			((intsts & V3D_HUB_INT_MMU_WRV) ?
 			 ", write violation" : ""),
@@ -209,7 +249,7 @@ v3d_hub_irq(int irq, void *arg)
 		status = IRQ_HANDLED;
 	}
 
-	if (v3d->ver >= 71 && (intsts & V3D_V7_HUB_INT_GMPV)) {
+	if (v3d->ver >= V3D_GEN_71 && (intsts & V3D_V7_HUB_INT_GMPV)) {
 		dev_err(v3d->drm.dev, "GMP Violation\n");
 		status = IRQ_HANDLED;
 	}

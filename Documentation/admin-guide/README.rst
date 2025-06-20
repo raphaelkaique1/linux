@@ -165,7 +165,7 @@ Configuring the kernel
 
      "make xconfig"     Qt based configuration tool.
 
-     "make gconfig"     GTK+ based configuration tool.
+     "make gconfig"     GTK based configuration tool.
 
      "make oldconfig"   Default all questions based on the contents of
                         your existing ./.config file and asking about
@@ -176,7 +176,7 @@ Configuring the kernel
                         values without prompting.
 
      "make defconfig"   Create a ./.config file by using the default
-                        symbol values from either arch/$ARCH/defconfig
+                        symbol values from either arch/$ARCH/configs/defconfig
                         or arch/$ARCH/configs/${PLATFORM}_defconfig,
                         depending on the architecture.
 
@@ -259,7 +259,7 @@ Configuring the kernel
 Compiling the kernel
 --------------------
 
- - Make sure you have at least gcc 5.1 available.
+ - Make sure you have at least gcc 8.1 available.
    For more information, refer to :ref:`Documentation/process/changes.rst <changes>`.
 
  - Do a ``make`` to create a compressed kernel image. It is also possible to do

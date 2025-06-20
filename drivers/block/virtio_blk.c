@@ -226,7 +226,7 @@ static int virtblk_map_data(struct blk_mq_hw_ctx *hctx, struct request *req,
 	if (unlikely(err))
 		return -ENOMEM;
 
-	return blk_rq_map_sg(hctx->queue, req, vbr->sg_table.sgl);
+	return blk_rq_map_sg(req, vbr->sg_table.sgl);
 }
 
 static void virtblk_cleanup_cmd(struct request *req)
@@ -571,7 +571,7 @@ static int virtblk_submit_zone_report(struct virtio_blk *vblk,
 	vbr->out_hdr.type = cpu_to_virtio32(vblk->vdev, VIRTIO_BLK_T_ZONE_REPORT);
 	vbr->out_hdr.sector = cpu_to_virtio64(vblk->vdev, sector);
 
-	err = blk_rq_map_kern(q, req, report_buf, report_len, GFP_KERNEL);
+	err = blk_rq_map_kern(req, report_buf, report_len, GFP_KERNEL);
 	if (err)
 		goto out;
 
@@ -817,7 +817,7 @@ static int virtblk_get_id(struct gendisk *disk, char *id_str)
 	vbr->out_hdr.type = cpu_to_virtio32(vblk->vdev, VIRTIO_BLK_T_GET_ID);
 	vbr->out_hdr.sector = 0;
 
-	err = blk_rq_map_kern(q, req, id_str, VIRTIO_BLK_ID_BYTES, GFP_KERNEL);
+	err = blk_rq_map_kern(req, id_str, VIRTIO_BLK_ID_BYTES, GFP_KERNEL);
 	if (err)
 		goto out;
 
@@ -1207,11 +1207,12 @@ static int virtblk_poll(struct blk_mq_hw_ctx *hctx, struct io_comp_batch *iob)
 
 	while ((vbr = virtqueue_get_buf(vq->vq, &len)) != NULL) {
 		struct request *req = blk_mq_rq_from_pdu(vbr);
+		u8 status = virtblk_vbr_status(vbr);
 
 		found++;
 		if (!blk_mq_complete_request_remote(req) &&
-		    !blk_mq_add_to_batch(req, iob, virtblk_vbr_status(vbr),
-						virtblk_complete_batch))
+		    !blk_mq_add_to_batch(req, iob, status != VIRTIO_BLK_S_OK,
+					 virtblk_complete_batch))
 			virtblk_request_done(req);
 	}
 
@@ -1579,16 +1580,16 @@ static void virtblk_remove(struct virtio_device *vdev)
 	put_disk(vblk->disk);
 }
 
-#ifdef CONFIG_PM_SLEEP
-static int virtblk_freeze(struct virtio_device *vdev)
+static int virtblk_freeze_priv(struct virtio_device *vdev)
 {
 	struct virtio_blk *vblk = vdev->priv;
 	struct request_queue *q = vblk->disk->queue;
+	unsigned int memflags;
 
 	/* Ensure no requests in virtqueues before deleting vqs. */
-	blk_mq_freeze_queue(q);
+	memflags = blk_mq_freeze_queue(q);
 	blk_mq_quiesce_queue_nowait(q);
-	blk_mq_unfreeze_queue(q);
+	blk_mq_unfreeze_queue(q, memflags);
 
 	/* Ensure we don't receive any more interrupts */
 	virtio_reset_device(vdev);
@@ -1602,7 +1603,7 @@ static int virtblk_freeze(struct virtio_device *vdev)
 	return 0;
 }
 
-static int virtblk_restore(struct virtio_device *vdev)
+static int virtblk_restore_priv(struct virtio_device *vdev)
 {
 	struct virtio_blk *vblk = vdev->priv;
 	int ret;
@@ -1616,7 +1617,28 @@ static int virtblk_restore(struct virtio_device *vdev)
 
 	return 0;
 }
+
+#ifdef CONFIG_PM_SLEEP
+static int virtblk_freeze(struct virtio_device *vdev)
+{
+	return virtblk_freeze_priv(vdev);
+}
+
+static int virtblk_restore(struct virtio_device *vdev)
+{
+	return virtblk_restore_priv(vdev);
+}
 #endif
+
+static int virtblk_reset_prepare(struct virtio_device *vdev)
+{
+	return virtblk_freeze_priv(vdev);
+}
+
+static int virtblk_reset_done(struct virtio_device *vdev)
+{
+	return virtblk_restore_priv(vdev);
+}
 
 static const struct virtio_device_id id_table[] = {
 	{ VIRTIO_ID_BLOCK, VIRTIO_DEV_ANY_ID },
@@ -1653,6 +1675,8 @@ static struct virtio_driver virtio_blk = {
 	.freeze				= virtblk_freeze,
 	.restore			= virtblk_restore,
 #endif
+	.reset_prepare			= virtblk_reset_prepare,
+	.reset_done			= virtblk_reset_done,
 };
 
 static int __init virtio_blk_init(void)

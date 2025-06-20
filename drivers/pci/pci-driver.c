@@ -555,12 +555,6 @@ static void pci_pm_default_resume(struct pci_dev *pci_dev)
 	pci_enable_wake(pci_dev, PCI_D0, false);
 }
 
-static void pci_pm_power_up_and_verify_state(struct pci_dev *pci_dev)
-{
-	pci_power_up(pci_dev);
-	pci_update_current_state(pci_dev, PCI_D0);
-}
-
 static void pci_pm_default_resume_early(struct pci_dev *pci_dev)
 {
 	pci_pm_power_up_and_verify_state(pci_dev);
@@ -812,8 +806,7 @@ static int pci_pm_suspend(struct device *dev)
 	 * suspend callbacks can cope with runtime-suspended devices, it is
 	 * better to resume the device from runtime suspend here.
 	 */
-	if (!dev_pm_test_driver_flags(dev, DPM_FLAG_SMART_SUSPEND) ||
-	    pci_dev_need_resume(pci_dev)) {
+	if (!dev_pm_smart_suspend(dev) || pci_dev_need_resume(pci_dev)) {
 		pm_runtime_resume(dev);
 		pci_dev->state_saved = false;
 	} else {
@@ -1151,8 +1144,7 @@ static int pci_pm_poweroff(struct device *dev)
 	}
 
 	/* The reason to do that is the same as in pci_pm_suspend(). */
-	if (!dev_pm_test_driver_flags(dev, DPM_FLAG_SMART_SUSPEND) ||
-	    pci_dev_need_resume(pci_dev)) {
+	if (!dev_pm_smart_suspend(dev) || pci_dev_need_resume(pci_dev)) {
 		pm_runtime_resume(dev);
 		pci_dev->state_saved = false;
 	} else {
@@ -1509,7 +1501,7 @@ static int pci_bus_match(struct device *dev, const struct device_driver *drv)
 	struct pci_driver *pci_drv;
 	const struct pci_device_id *found_id;
 
-	if (!pci_dev->match_driver)
+	if (pci_dev_binding_disallowed(pci_dev))
 		return 0;
 
 	pci_drv = (struct pci_driver *)to_pci_driver(drv);
@@ -1653,7 +1645,8 @@ static int pci_dma_configure(struct device *dev)
 
 	pci_put_host_bridge_device(bridge);
 
-	if (!ret && !driver->driver_managed_dma) {
+	/* @driver may not be valid when we're called from the IOMMU layer */
+	if (!ret && dev->driver && !driver->driver_managed_dma) {
 		ret = iommu_device_use_default_domain(dev);
 		if (ret)
 			arch_teardown_dma_ops(dev);

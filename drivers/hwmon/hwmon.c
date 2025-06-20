@@ -332,7 +332,7 @@ static int hwmon_attr_base(enum hwmon_sensor_types type)
 
 static DEFINE_MUTEX(hwmon_pec_mutex);
 
-static int hwmon_match_device(struct device *dev, void *data)
+static int hwmon_match_device(struct device *dev, const void *data)
 {
 	return dev->class == &hwmon_class;
 }
@@ -646,8 +646,8 @@ static const char * const hwmon_power_attr_templates[] = {
 	[hwmon_power_enable] = "power%d_enable",
 	[hwmon_power_average] = "power%d_average",
 	[hwmon_power_average_interval] = "power%d_average_interval",
-	[hwmon_power_average_interval_max] = "power%d_interval_max",
-	[hwmon_power_average_interval_min] = "power%d_interval_min",
+	[hwmon_power_average_interval_max] = "power%d_average_interval_max",
+	[hwmon_power_average_interval_min] = "power%d_average_interval_min",
 	[hwmon_power_average_highest] = "power%d_average_highest",
 	[hwmon_power_average_lowest] = "power%d_average_lowest",
 	[hwmon_power_average_max] = "power%d_average_max",

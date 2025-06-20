@@ -30,6 +30,7 @@
 #include "eventfd.h"
 #include "msg_ring.h"
 #include "memmap.h"
+#include "zcrx.h"
 
 #define IORING_MAX_RESTRICTIONS	(IORING_RESTRICTION_LAST + \
 				 IORING_REGISTER_LAST + IORING_OP_LAST)
@@ -272,6 +273,8 @@ static __cold int io_register_iowq_max_workers(struct io_ring_ctx *ctx,
 	if (ctx->flags & IORING_SETUP_SQPOLL) {
 		sqd = ctx->sq_data;
 		if (sqd) {
+			struct task_struct *tsk;
+
 			/*
 			 * Observe the correct sqd->lock -> ctx->uring_lock
 			 * ordering. Fine to drop uring_lock here, we hold
@@ -281,8 +284,9 @@ static __cold int io_register_iowq_max_workers(struct io_ring_ctx *ctx,
 			mutex_unlock(&ctx->uring_lock);
 			mutex_lock(&sqd->lock);
 			mutex_lock(&ctx->uring_lock);
-			if (sqd->thread)
-				tctx = sqd->thread->io_uring;
+			tsk = sqpoll_task_locked(sqd);
+			if (tsk)
+				tctx = tsk->io_uring;
 		}
 	} else {
 		tctx = current->io_uring;
@@ -552,7 +556,7 @@ overflow:
 	ctx->cqe_cached = ctx->cqe_sentinel = NULL;
 
 	WRITE_ONCE(n.rings->sq_dropped, READ_ONCE(o.rings->sq_dropped));
-	WRITE_ONCE(n.rings->sq_flags, READ_ONCE(o.rings->sq_flags));
+	atomic_set(&n.rings->sq_flags, atomic_read(&o.rings->sq_flags));
 	WRITE_ONCE(n.rings->cq_flags, READ_ONCE(o.rings->cq_flags));
 	WRITE_ONCE(n.rings->cq_overflow, READ_ONCE(o.rings->cq_overflow));
 
@@ -813,6 +817,12 @@ static int __io_uring_register(struct io_ring_ctx *ctx, unsigned opcode,
 			break;
 		ret = io_register_clone_buffers(ctx, arg);
 		break;
+	case IORING_REGISTER_ZCRX_IFQ:
+		ret = -EINVAL;
+		if (!arg || nr_args != 1)
+			break;
+		ret = io_register_zcrx_ifq(ctx, arg);
+		break;
 	case IORING_REGISTER_RESIZE_RINGS:
 		ret = -EINVAL;
 		if (!arg || nr_args != 1)
@@ -853,6 +863,8 @@ struct file *io_uring_register_get_file(unsigned int fd, bool registered)
 			return ERR_PTR(-EINVAL);
 		fd = array_index_nospec(fd, IO_RINGFD_REG_MAX);
 		file = tctx->registered_rings[fd];
+		if (file)
+			get_file(file);
 	} else {
 		file = fget(fd);
 	}
@@ -919,7 +931,7 @@ SYSCALL_DEFINE4(io_uring_register, unsigned int, fd, unsigned int, opcode,
 	trace_io_uring_register(ctx, opcode, ctx->file_table.data.nr,
 				ctx->buf_table.nr, ret);
 	mutex_unlock(&ctx->uring_lock);
-	if (!use_registered_ring)
-		fput(file);
+
+	fput(file);
 	return ret;
 }

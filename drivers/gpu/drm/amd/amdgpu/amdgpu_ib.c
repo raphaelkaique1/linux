@@ -163,12 +163,12 @@ int amdgpu_ib_schedule(struct amdgpu_ring *ring, unsigned int num_ibs,
 		init_shadow = false;
 	}
 
-	if (!ring->sched.ready && !ring->is_mes_queue) {
+	if (!ring->sched.ready) {
 		dev_err(adev->dev, "couldn't schedule ib on ring <%s>\n", ring->name);
 		return -EINVAL;
 	}
 
-	if (vm && !job->vmid && !ring->is_mes_queue) {
+	if (vm && !job->vmid) {
 		dev_err(adev->dev, "VM IB without ID\n");
 		return -EINVAL;
 	}
@@ -297,7 +297,7 @@ int amdgpu_ib_schedule(struct amdgpu_ring *ring, unsigned int num_ibs,
 	amdgpu_ring_patch_cond_exec(ring, cond_exec);
 
 	ring->current_ctx = fence_ctx;
-	if (vm && ring->funcs->emit_switch_buffer)
+	if (job && ring->funcs->emit_switch_buffer)
 		amdgpu_ring_emit_switch_buffer(ring);
 
 	if (ring->funcs->emit_wave_limit &&

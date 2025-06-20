@@ -27,9 +27,10 @@
 #include <asm/smp.h>
 #include <asm/cpu.h>
 #include <asm/apic.h>
-#include <asm/cpuid.h>
+#include <asm/cpuid/api.h>
 #include <asm/cmdline.h>
 #include <asm/iommu.h>
+#include <asm/msr.h>
 
 /*
  * The RMP entry information as returned by the RMPREAD instruction.
@@ -136,11 +137,11 @@ static int __mfd_enable(unsigned int cpu)
 	if (!cc_platform_has(CC_ATTR_HOST_SEV_SNP))
 		return 0;
 
-	rdmsrl(MSR_AMD64_SYSCFG, val);
+	rdmsrq(MSR_AMD64_SYSCFG, val);
 
 	val |= MSR_AMD64_SYSCFG_MFDM;
 
-	wrmsrl(MSR_AMD64_SYSCFG, val);
+	wrmsrq(MSR_AMD64_SYSCFG, val);
 
 	return 0;
 }
@@ -157,12 +158,12 @@ static int __snp_enable(unsigned int cpu)
 	if (!cc_platform_has(CC_ATTR_HOST_SEV_SNP))
 		return 0;
 
-	rdmsrl(MSR_AMD64_SYSCFG, val);
+	rdmsrq(MSR_AMD64_SYSCFG, val);
 
 	val |= MSR_AMD64_SYSCFG_SNP_EN;
 	val |= MSR_AMD64_SYSCFG_SNP_VMPL_EN;
 
-	wrmsrl(MSR_AMD64_SYSCFG, val);
+	wrmsrq(MSR_AMD64_SYSCFG, val);
 
 	return 0;
 }
@@ -198,7 +199,6 @@ static void __init __snp_fixup_e820_tables(u64 pa)
 		pr_info("Reserving start/end of RMP table on a 2MB boundary [0x%016llx]\n", pa);
 		e820__range_update(pa, PMD_SIZE, E820_TYPE_RAM, E820_TYPE_RESERVED);
 		e820__range_update_table(e820_table_kexec, pa, PMD_SIZE, E820_TYPE_RAM, E820_TYPE_RESERVED);
-		e820__range_update_table(e820_table_firmware, pa, PMD_SIZE, E820_TYPE_RAM, E820_TYPE_RESERVED);
 		if (!memblock_is_region_reserved(pa, PMD_SIZE))
 			memblock_reserve(pa, PMD_SIZE);
 	}
@@ -505,32 +505,32 @@ static bool __init setup_rmptable(void)
  * described in the SNP_INIT_EX firmware command description in the SNP
  * firmware ABI spec.
  */
-static int __init snp_rmptable_init(void)
+int __init snp_rmptable_init(void)
 {
 	unsigned int i;
 	u64 val;
 
-	if (!cc_platform_has(CC_ATTR_HOST_SEV_SNP))
-		return 0;
+	if (WARN_ON_ONCE(!cc_platform_has(CC_ATTR_HOST_SEV_SNP)))
+		return -ENOSYS;
 
-	if (!amd_iommu_snp_en)
-		goto nosnp;
+	if (WARN_ON_ONCE(!amd_iommu_snp_en))
+		return -ENOSYS;
 
 	if (!setup_rmptable())
-		goto nosnp;
+		return -ENOSYS;
 
 	/*
 	 * Check if SEV-SNP is already enabled, this can happen in case of
 	 * kexec boot.
 	 */
-	rdmsrl(MSR_AMD64_SYSCFG, val);
+	rdmsrq(MSR_AMD64_SYSCFG, val);
 	if (val & MSR_AMD64_SYSCFG_SNP_EN)
 		goto skip_enable;
 
 	/* Zero out the RMP bookkeeping area */
 	if (!clear_rmptable_bookkeeping()) {
 		free_rmp_segment_table();
-		goto nosnp;
+		return -ENOSYS;
 	}
 
 	/* Zero out the RMP entries */
@@ -562,16 +562,7 @@ skip_enable:
 	crash_kexec_post_notifiers = true;
 
 	return 0;
-
-nosnp:
-	cc_platform_clear(CC_ATTR_HOST_SEV_SNP);
-	return -ENOSYS;
 }
-
-/*
- * This must be called after the IOMMU has been initialized.
- */
-device_initcall(snp_rmptable_init);
 
 static void set_rmp_segment_info(unsigned int segment_shift)
 {
@@ -586,8 +577,8 @@ static bool probe_contiguous_rmptable_info(void)
 {
 	u64 rmp_sz, rmp_base, rmp_end;
 
-	rdmsrl(MSR_AMD64_RMP_BASE, rmp_base);
-	rdmsrl(MSR_AMD64_RMP_END, rmp_end);
+	rdmsrq(MSR_AMD64_RMP_BASE, rmp_base);
+	rdmsrq(MSR_AMD64_RMP_END, rmp_end);
 
 	if (!(rmp_base & RMP_ADDR_MASK) || !(rmp_end & RMP_ADDR_MASK)) {
 		pr_err("Memory for the RMP table has not been reserved by BIOS\n");
@@ -620,13 +611,13 @@ static bool probe_segmented_rmptable_info(void)
 	unsigned int eax, ebx, segment_shift, segment_shift_min, segment_shift_max;
 	u64 rmp_base, rmp_end;
 
-	rdmsrl(MSR_AMD64_RMP_BASE, rmp_base);
+	rdmsrq(MSR_AMD64_RMP_BASE, rmp_base);
 	if (!(rmp_base & RMP_ADDR_MASK)) {
 		pr_err("Memory for the RMP table has not been reserved by BIOS\n");
 		return false;
 	}
 
-	rdmsrl(MSR_AMD64_RMP_END, rmp_end);
+	rdmsrq(MSR_AMD64_RMP_END, rmp_end);
 	WARN_ONCE(rmp_end & RMP_ADDR_MASK,
 		  "Segmented RMP enabled but RMP_END MSR is non-zero\n");
 
@@ -662,7 +653,7 @@ static bool probe_segmented_rmptable_info(void)
 bool snp_probe_rmptable_info(void)
 {
 	if (cpu_feature_enabled(X86_FEATURE_SEGMENTED_RMP))
-		rdmsrl(MSR_AMD64_RMP_CFG, rmp_cfg);
+		rdmsrq(MSR_AMD64_RMP_CFG, rmp_cfg);
 
 	if (rmp_cfg & MSR_AMD64_SEG_RMP_ENABLED)
 		return probe_segmented_rmptable_info();

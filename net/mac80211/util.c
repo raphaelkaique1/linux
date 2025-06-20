@@ -6,7 +6,7 @@
  * Copyright 2007	Johannes Berg <johannes@sipsolutions.net>
  * Copyright 2013-2014  Intel Mobile Communications GmbH
  * Copyright (C) 2015-2017	Intel Deutschland GmbH
- * Copyright (C) 2018-2024 Intel Corporation
+ * Copyright (C) 2018-2025 Intel Corporation
  *
  * utilities for mac80211
  */
@@ -687,7 +687,7 @@ void __ieee80211_flush_queues(struct ieee80211_local *local,
 			      struct ieee80211_sub_if_data *sdata,
 			      unsigned int queues, bool drop)
 {
-	if (!local->ops->flush)
+	if (!local->ops->flush && !drop)
 		return;
 
 	/*
@@ -714,7 +714,8 @@ void __ieee80211_flush_queues(struct ieee80211_local *local,
 		}
 	}
 
-	drv_flush(local, sdata, queues, drop);
+	if (local->ops->flush)
+		drv_flush(local, sdata, queues, drop);
 
 	ieee80211_wake_queues_by_reason(&local->hw, queues,
 					IEEE80211_QUEUE_STOP_REASON_FLUSH,
@@ -1203,7 +1204,6 @@ static int ieee80211_put_preq_ies_band(struct sk_buff *skb,
 	struct ieee80211_supported_band *sband;
 	int i, err;
 	size_t noffset;
-	u32 rate_flags;
 	bool have_80mhz = false;
 
 	*offset = 0;
@@ -1212,13 +1212,11 @@ static int ieee80211_put_preq_ies_band(struct sk_buff *skb,
 	if (WARN_ON_ONCE(!sband))
 		return 0;
 
-	rate_flags = ieee80211_chandef_rate_flags(chandef);
-
 	/* For direct scan add S1G IE and consider its override bits */
 	if (band == NL80211_BAND_S1GHZ)
 		return ieee80211_put_s1g_cap(skb, &sband->s1g_cap);
 
-	err = ieee80211_put_srates_elem(skb, sband, 0, rate_flags,
+	err = ieee80211_put_srates_elem(skb, sband, 0,
 					~rate_mask, WLAN_EID_SUPP_RATES);
 	if (err)
 		return err;
@@ -1240,7 +1238,7 @@ static int ieee80211_put_preq_ies_band(struct sk_buff *skb,
 		*offset = noffset;
 	}
 
-	err = ieee80211_put_srates_elem(skb, sband, 0, rate_flags,
+	err = ieee80211_put_srates_elem(skb, sband, 0,
 					~rate_mask, WLAN_EID_EXT_SUPP_RATES);
 	if (err)
 		return err;
@@ -1521,15 +1519,12 @@ u32 ieee80211_sta_get_rates(struct ieee80211_sub_if_data *sdata,
 {
 	struct ieee80211_supported_band *sband;
 	size_t num_rates;
-	u32 supp_rates, rate_flags;
+	u32 supp_rates;
 	int i, j;
 
 	sband = sdata->local->hw.wiphy->bands[band];
 	if (WARN_ON(!sband))
 		return 1;
-
-	rate_flags =
-		ieee80211_chandef_rate_flags(&sdata->vif.bss_conf.chanreq.oper);
 
 	num_rates = sband->n_bitrates;
 	supp_rates = 0;
@@ -1550,12 +1545,7 @@ u32 ieee80211_sta_get_rates(struct ieee80211_sub_if_data *sdata,
 			continue;
 
 		for (j = 0; j < num_rates; j++) {
-			int brate;
-			if ((rate_flags & sband->bitrates[j].flags)
-			    != rate_flags)
-				continue;
-
-			brate = sband->bitrates[j].bitrate;
+			int brate = sband->bitrates[j].bitrate;
 
 			if (brate == own_rate) {
 				supp_rates |= BIT(j);
@@ -2155,7 +2145,8 @@ int ieee80211_reconfig(struct ieee80211_local *local)
 
  wake_up:
 
-	if (local->monitors == local->open_count && local->monitors > 0)
+	if (local->virt_monitors > 0 &&
+	    local->virt_monitors == local->open_count)
 		ieee80211_add_virtual_monitor(local);
 
 	/*
@@ -2192,8 +2183,10 @@ int ieee80211_reconfig(struct ieee80211_local *local)
 		ieee80211_reconfig_roc(local);
 
 		/* Requeue all works */
-		list_for_each_entry(sdata, &local->interfaces, list)
-			wiphy_work_queue(local->hw.wiphy, &sdata->work);
+		list_for_each_entry(sdata, &local->interfaces, list) {
+			if (ieee80211_sdata_running(sdata))
+				wiphy_work_queue(local->hw.wiphy, &sdata->work);
+		}
 	}
 
 	ieee80211_wake_queues_by_reason(hw, IEEE80211_MAX_QUEUE_MAP,
@@ -3219,15 +3212,13 @@ bool ieee80211_chandef_s1g_oper(const struct ieee80211_s1g_oper_ie *oper,
 
 int ieee80211_put_srates_elem(struct sk_buff *skb,
 			      const struct ieee80211_supported_band *sband,
-			      u32 basic_rates, u32 rate_flags, u32 masked_rates,
+			      u32 basic_rates, u32 masked_rates,
 			      u8 element_id)
 {
 	u8 i, rates, skip;
 
 	rates = 0;
 	for (i = 0; i < sband->n_bitrates; i++) {
-		if ((rate_flags & sband->bitrates[i].flags) != rate_flags)
-			continue;
 		if (masked_rates & BIT(i))
 			continue;
 		rates++;
@@ -3253,8 +3244,6 @@ int ieee80211_put_srates_elem(struct sk_buff *skb,
 		int rate;
 		u8 basic;
 
-		if ((rate_flags & sband->bitrates[i].flags) != rate_flags)
-			continue;
 		if (masked_rates & BIT(i))
 			continue;
 

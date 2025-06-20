@@ -16,15 +16,6 @@
 #include <asm/mipsregs.h>
 #include <linux/unaligned.h>
 
-enum crc_op_size {
-	b, h, w, d,
-};
-
-enum crc_type {
-	crc32,
-	crc32c,
-};
-
 #ifndef TOOLCHAIN_SUPPORTS_CRC
 #define _ASM_SET_CRC(OP, SZ, TYPE)					  \
 _ASM_MACRO_3R(OP, rt, rs, rt2,						  \
@@ -71,7 +62,7 @@ do {							\
 #define CRC32C(crc, value, size) \
 	_CRC32(crc, value, size, crc32c)
 
-static DEFINE_STATIC_KEY_FALSE(have_crc32);
+static __ro_after_init DEFINE_STATIC_KEY_FALSE(have_crc32);
 
 u32 crc32_le_arch(u32 crc, const u8 *p, size_t len)
 {
@@ -117,10 +108,10 @@ u32 crc32_le_arch(u32 crc, const u8 *p, size_t len)
 }
 EXPORT_SYMBOL(crc32_le_arch);
 
-u32 crc32c_le_arch(u32 crc, const u8 *p, size_t len)
+u32 crc32c_arch(u32 crc, const u8 *p, size_t len)
 {
 	if (!static_branch_likely(&have_crc32))
-		return crc32c_le_base(crc, p, len);
+		return crc32c_base(crc, p, len);
 
 	if (IS_ENABLED(CONFIG_64BIT)) {
 		for (; len >= sizeof(u64); p += sizeof(u64), len -= sizeof(u64)) {
@@ -158,7 +149,7 @@ u32 crc32c_le_arch(u32 crc, const u8 *p, size_t len)
 	}
 	return crc;
 }
-EXPORT_SYMBOL(crc32c_le_arch);
+EXPORT_SYMBOL(crc32c_arch);
 
 u32 crc32_be_arch(u32 crc, const u8 *p, size_t len)
 {
@@ -172,7 +163,7 @@ static int __init crc32_mips_init(void)
 		static_branch_enable(&have_crc32);
 	return 0;
 }
-arch_initcall(crc32_mips_init);
+subsys_initcall(crc32_mips_init);
 
 static void __exit crc32_mips_exit(void)
 {

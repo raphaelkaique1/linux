@@ -292,13 +292,27 @@ rename or unlink will of course be noticed and handled).
 Permission model
 ----------------
 
+An overlay filesystem stashes credentials that will be used when
+accessing lower or upper filesystems.
+
+In the old mount api the credentials of the task calling mount(2) are
+stashed. In the new mount api the credentials of the task creating the
+superblock through FSCONFIG_CMD_CREATE command of fsconfig(2) are
+stashed.
+
+Starting with kernel v6.15 it is possible to use the "override_creds"
+mount option which will cause the credentials of the calling task to be
+recorded. Note that "override_creds" is only meaningful when used with
+the new mount api as the old mount api combines setting options and
+superblock creation in a single mount(2) syscall.
+
 Permission checking in the overlay filesystem follows these principles:
 
  1) permission check SHOULD return the same result before and after copy up
 
  2) task creating the overlay mount MUST NOT gain additional privileges
 
- 3) non-mounting task MAY gain additional privileges through the overlay,
+ 3) task[*] MAY gain additional privileges through the overlay,
     compared to direct access on underlying lower or upper filesystems
 
 This is achieved by performing two permission checks on each access:
@@ -306,7 +320,7 @@ This is achieved by performing two permission checks on each access:
  a) check if current task is allowed access based on local DAC (owner,
     group, mode and posix acl), as well as MAC checks
 
- b) check if mounting task would be allowed real operation on lower or
+ b) check if stashed credentials would be allowed real operation on lower or
     upper layer based on underlying filesystem permissions, again including
     MAC checks
 
@@ -315,10 +329,10 @@ are copied up.  On the other hand it can result in server enforced
 permissions (used by NFS, for example) being ignored (3).
 
 Check (b) ensures that no task gains permissions to underlying layers that
-the mounting task does not have (2).  This also means that it is possible
+the stashed credentials do not have (2).  This also means that it is possible
 to create setups where the consistency rule (1) does not hold; normally,
-however, the mounting task will have sufficient privileges to perform all
-operations.
+however, the stashed credentials will have sufficient privileges to
+perform all operations.
 
 Another way to demonstrate this model is drawing parallels between::
 
@@ -428,6 +442,13 @@ in the "data-only" lower layers are not visible in overlayfs inodes.
 Only the data of the files in the "data-only" lower layers may be visible
 when a "metacopy" file in one of the lower layers above it, has a "redirect"
 to the absolute path of the "lower data" file in the "data-only" lower layer.
+
+Instead of explicitly enabling "metacopy=on" it is sufficient to specify at
+least one data-only layer to enable redirection of data to a data-only layer.
+In this case other forms of metacopy are rejected.  Note: this way data-only
+layers may be used toghether with "userxattr", in which case careful attention
+must be given to privileges needed to change the "user.overlay.redirect" xattr
+to prevent misuse.
 
 Since kernel version v6.8, "data-only" lower layers can also be added using
 the "datadir+" mount options and the fsconfig syscall from new mount api.

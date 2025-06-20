@@ -7210,8 +7210,8 @@ static void bfq_exit_queue(struct elevator_queue *e)
 #endif
 
 	blk_stat_disable_accounting(bfqd->queue);
-	clear_bit(ELEVATOR_FLAG_DISABLE_WBT, &e->flags);
-	wbt_enable_default(bfqd->queue->disk);
+	blk_queue_flag_clear(QUEUE_FLAG_DISABLE_WBT_DEF, bfqd->queue);
+	set_bit(ELEVATOR_FLAG_ENABLE_WBT_ON_EXIT, &e->flags);
 
 	kfree(bfqd);
 }
@@ -7315,9 +7315,8 @@ static int bfq_init_queue(struct request_queue *q, struct elevator_type *e)
 
 	INIT_LIST_HEAD(&bfqd->dispatch);
 
-	hrtimer_init(&bfqd->idle_slice_timer, CLOCK_MONOTONIC,
-		     HRTIMER_MODE_REL);
-	bfqd->idle_slice_timer.function = bfq_idle_slice_timer;
+	hrtimer_setup(&bfqd->idle_slice_timer, bfq_idle_slice_timer, CLOCK_MONOTONIC,
+		      HRTIMER_MODE_REL);
 
 	bfqd->queue_weights_tree = RB_ROOT_CACHED;
 #ifdef CONFIG_BFQ_GROUP_IOSCHED
@@ -7398,7 +7397,7 @@ static int bfq_init_queue(struct request_queue *q, struct elevator_type *e)
 	/* We dispatch from request queue wide instead of hw queue */
 	blk_queue_flag_set(QUEUE_FLAG_SQ_SCHED, q);
 
-	set_bit(ELEVATOR_FLAG_DISABLE_WBT, &eq->flags);
+	blk_queue_flag_set(QUEUE_FLAG_DISABLE_WBT_DEF, q);
 	wbt_disable_default(q->disk);
 	blk_stat_enable_accounting(q);
 

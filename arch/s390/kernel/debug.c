@@ -251,7 +251,7 @@ static debug_info_t *debug_info_alloc(const char *name, int pages_per_area,
 	rc->level	   = level;
 	rc->buf_size	   = buf_size;
 	rc->entry_size	   = sizeof(debug_entry_t) + buf_size;
-	strscpy(rc->name, name, sizeof(rc->name));
+	strscpy(rc->name, name);
 	memset(rc->views, 0, DEBUG_MAX_VIEWS * sizeof(struct debug_view *));
 	memset(rc->debugfs_entries, 0, DEBUG_MAX_VIEWS * sizeof(struct dentry *));
 	refcount_set(&(rc->ref_count), 0);
@@ -1122,7 +1122,7 @@ static int s390dbf_procactive(const struct ctl_table *table, int write,
 		return 0;
 }
 
-static struct ctl_table s390dbf_table[] = {
+static const struct ctl_table s390dbf_table[] = {
 	{
 		.procname	= "debug_stoppable",
 		.data		= &debug_stoppable,

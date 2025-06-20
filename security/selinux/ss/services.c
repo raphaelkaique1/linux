@@ -46,6 +46,7 @@
 #include <linux/in.h>
 #include <linux/sched.h>
 #include <linux/audit.h>
+#include <linux/parser.h>
 #include <linux/vmalloc.h>
 #include <linux/lsm_hooks.h>
 #include <net/netlabel.h>
@@ -2572,13 +2573,14 @@ out:
  * @name: interface name
  * @if_sid: interface SID
  */
-int security_netif_sid(char *name, u32 *if_sid)
+int security_netif_sid(const char *name, u32 *if_sid)
 {
 	struct selinux_policy *policy;
 	struct policydb *policydb;
 	struct sidtab *sidtab;
 	int rc;
 	struct ocontext *c;
+	bool wildcard_support;
 
 	if (!selinux_initialized()) {
 		*if_sid = SECINITSID_NETIF;
@@ -2591,11 +2593,18 @@ retry:
 	policy = rcu_dereference(selinux_state.policy);
 	policydb = &policy->policydb;
 	sidtab = policy->sidtab;
+	wildcard_support = ebitmap_get_bit(&policydb->policycaps, POLICYDB_CAP_NETIF_WILDCARD);
 
 	c = policydb->ocontexts[OCON_NETIF];
 	while (c) {
-		if (strcmp(name, c->u.name) == 0)
-			break;
+		if (wildcard_support) {
+			if (match_wildcard(c->u.name, name))
+				break;
+		} else {
+			if (strcmp(c->u.name, name) == 0)
+				break;
+		}
+
 		c = c->next;
 	}
 
@@ -2634,7 +2643,7 @@ static bool match_ipv6_addrmask(const u32 input[4], const u32 addr[4], const u32
  * @out_sid: security identifier
  */
 int security_node_sid(u16 domain,
-		      void *addrp,
+		      const void *addrp,
 		      u32 addrlen,
 		      u32 *out_sid)
 {
@@ -2663,7 +2672,7 @@ retry:
 		if (addrlen != sizeof(u32))
 			goto out;
 
-		addr = *((u32 *)addrp);
+		addr = *((const u32 *)addrp);
 
 		c = policydb->ocontexts[OCON_NODE];
 		while (c) {
@@ -2863,6 +2872,7 @@ static inline int __security_genfs_sid(struct selinux_policy *policy,
 	struct genfs *genfs;
 	struct ocontext *c;
 	int cmp = 0;
+	bool wildcard;
 
 	while (path[0] == '/' && path[1] == '/')
 		path++;
@@ -2879,11 +2889,20 @@ static inline int __security_genfs_sid(struct selinux_policy *policy,
 	if (!genfs || cmp)
 		return -ENOENT;
 
+	wildcard = ebitmap_get_bit(&policy->policydb.policycaps,
+				   POLICYDB_CAP_GENFS_SECLABEL_WILDCARD);
 	for (c = genfs->head; c; c = c->next) {
-		size_t len = strlen(c->u.name);
-		if ((!c->v.sclass || sclass == c->v.sclass) &&
-		    (strncmp(c->u.name, path, len) == 0))
-			break;
+		if (!c->v.sclass || sclass == c->v.sclass) {
+			if (wildcard) {
+				if (match_wildcard(c->u.name, path))
+					break;
+			} else {
+				size_t len = strlen(c->u.name);
+
+				if ((strncmp(c->u.name, path, len)) == 0)
+					break;
+			}
+		}
 	}
 
 	if (!c)

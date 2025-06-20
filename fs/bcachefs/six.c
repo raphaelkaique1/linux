@@ -339,12 +339,9 @@ static inline bool six_owner_running(struct six_lock *lock)
 	 * acquiring the lock and setting the owner field. If we're an RT task
 	 * that will live-lock because we won't let the owner complete.
 	 */
-	rcu_read_lock();
+	guard(rcu)();
 	struct task_struct *owner = READ_ONCE(lock->owner);
-	bool ret = owner ? owner_on_cpu(owner) : !rt_or_dl_task(current);
-	rcu_read_unlock();
-
-	return ret;
+	return owner ? owner_on_cpu(owner) : !rt_or_dl_task(current);
 }
 
 static inline bool six_optimistic_spin(struct six_lock *lock,
@@ -850,7 +847,8 @@ void six_lock_exit(struct six_lock *lock)
 EXPORT_SYMBOL_GPL(six_lock_exit);
 
 void __six_lock_init(struct six_lock *lock, const char *name,
-		     struct lock_class_key *key, enum six_lock_init_flags flags)
+		     struct lock_class_key *key, enum six_lock_init_flags flags,
+		     gfp_t gfp)
 {
 	atomic_set(&lock->state, 0);
 	raw_spin_lock_init(&lock->wait_lock);
@@ -873,7 +871,7 @@ void __six_lock_init(struct six_lock *lock, const char *name,
 		 * failure if they wish by checking lock->readers, but generally
 		 * will not want to treat it as an error.
 		 */
-		lock->readers = alloc_percpu(unsigned);
+		lock->readers = alloc_percpu_gfp(unsigned, gfp);
 	}
 #endif
 }

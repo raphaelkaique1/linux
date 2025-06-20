@@ -41,7 +41,7 @@ __setup("fips=", fips_enable);
 static char fips_name[] = FIPS_MODULE_NAME;
 static char fips_version[] = FIPS_MODULE_VERSION;
 
-static struct ctl_table crypto_sysctl_table[] = {
+static const struct ctl_table crypto_sysctl_table[] = {
 	{
 		.procname	= "fips_enabled",
 		.data		= &fips_enabled,
@@ -95,5 +95,5 @@ static void __exit fips_exit(void)
 	crypto_proc_fips_exit();
 }
 
-subsys_initcall(fips_init);
+module_init(fips_init);
 module_exit(fips_exit);

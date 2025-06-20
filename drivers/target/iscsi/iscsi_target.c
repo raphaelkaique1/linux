@@ -3419,7 +3419,7 @@ iscsit_build_sendtargets_response(struct iscsit_cmd *cmd,
 					}
 				}
 
-				if (inet_addr_is_any((struct sockaddr *)&np->np_sockaddr))
+				if (inet_addr_is_any(&np->np_sockaddr))
 					sockaddr = &conn->local_sockaddr;
 				else
 					sockaddr = &np->np_sockaddr;
@@ -4263,8 +4263,8 @@ int iscsit_close_connection(
 	spin_unlock(&iscsit_global->ts_bitmap_lock);
 
 	iscsit_stop_timers_for_cmds(conn);
-	iscsit_stop_nopin_response_timer(conn);
 	iscsit_stop_nopin_timer(conn);
+	iscsit_stop_nopin_response_timer(conn);
 
 	if (conn->conn_transport->iscsit_wait_conn)
 		conn->conn_transport->iscsit_wait_conn(conn);
@@ -4663,21 +4663,6 @@ int iscsit_logout_post_handler(
 	return ret;
 }
 EXPORT_SYMBOL(iscsit_logout_post_handler);
-
-void iscsit_fail_session(struct iscsit_session *sess)
-{
-	struct iscsit_conn *conn;
-
-	spin_lock_bh(&sess->conn_lock);
-	list_for_each_entry(conn, &sess->sess_conn_list, conn_list) {
-		pr_debug("Moving to TARG_CONN_STATE_CLEANUP_WAIT.\n");
-		conn->conn_state = TARG_CONN_STATE_CLEANUP_WAIT;
-	}
-	spin_unlock_bh(&sess->conn_lock);
-
-	pr_debug("Moving to TARG_SESS_STATE_FAILED.\n");
-	sess->session_state = TARG_SESS_STATE_FAILED;
-}
 
 void iscsit_stop_session(
 	struct iscsit_session *sess,

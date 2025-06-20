@@ -34,6 +34,7 @@ static int min_sndbuf = SOCK_MIN_SNDBUF;
 static int min_rcvbuf = SOCK_MIN_RCVBUF;
 static int max_skb_frags = MAX_SKB_FRAGS;
 static int min_mem_pcpu_rsv = SK_MEMORY_PCPU_RESERVE;
+static int netdev_budget_usecs_min = 2 * USEC_PER_SEC / HZ;
 
 static int net_msg_warn;	/* Unused, but still a sysctl */
 
@@ -200,7 +201,7 @@ static int rps_sock_flow_sysctl(const struct ctl_table *table, int write,
 			if (orig_sock_table) {
 				static_branch_dec(&rps_needed);
 				static_branch_dec(&rfs_needed);
-				kvfree_rcu_mightsleep(orig_sock_table);
+				kvfree_rcu(orig_sock_table, rcu);
 			}
 		}
 	}
@@ -238,7 +239,7 @@ static int flow_limit_cpu_sysctl(const struct ctl_table *table, int write,
 				     lockdep_is_held(&flow_limit_update_mutex));
 			if (cur && !cpumask_test_cpu(i, mask)) {
 				RCU_INIT_POINTER(sd->flow_limit, NULL);
-				kfree_rcu_mightsleep(cur);
+				kfree_rcu(cur, rcu);
 			} else if (!cur && cpumask_test_cpu(i, mask)) {
 				cur = kzalloc_node(len, GFP_KERNEL,
 						   cpu_to_node(i));
@@ -247,7 +248,7 @@ static int flow_limit_cpu_sysctl(const struct ctl_table *table, int write,
 					ret = -ENOMEM;
 					goto write_unlock;
 				}
-				cur->num_buckets = netdev_flow_limit_table_len;
+				cur->log_buckets = ilog2(netdev_flow_limit_table_len);
 				rcu_assign_pointer(sd->flow_limit, cur);
 			}
 		}
@@ -587,7 +588,7 @@ static struct ctl_table net_core_table[] = {
 		.maxlen		= sizeof(unsigned int),
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec_minmax,
-		.extra1		= SYSCTL_ZERO,
+		.extra1		= &netdev_budget_usecs_min,
 	},
 	{
 		.procname	= "fb_tunnels_only_for_init_net",

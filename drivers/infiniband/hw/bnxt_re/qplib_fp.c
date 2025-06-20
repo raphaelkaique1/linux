@@ -1113,7 +1113,7 @@ int bnxt_qplib_create_qp(struct bnxt_qplib_res *res, struct bnxt_qplib_qp *qp)
 		qp_flags |= CMDQ_CREATE_QP_QP_FLAGS_FORCE_COMPLETION;
 	if (qp->wqe_mode == BNXT_QPLIB_WQE_MODE_VARIABLE)
 		qp_flags |= CMDQ_CREATE_QP_QP_FLAGS_VARIABLE_SIZED_WQE_ENABLED;
-	if (_is_ext_stats_supported(res->dattr->dev_cap_flags) && !res->is_vf)
+	if (bnxt_ext_stats_supported(res->cctx, res->dattr->dev_cap_flags, res->is_vf))
 		qp_flags |= CMDQ_CREATE_QP_QP_FLAGS_EXT_STATS_ENABLED;
 
 	req.qp_flags = cpu_to_le32(qp_flags);
@@ -1217,8 +1217,6 @@ static void __modify_flags_from_init_state(struct bnxt_qplib_qp *qp)
 			qp->path_mtu =
 				CMDQ_MODIFY_QP_PATH_MTU_MTU_2048;
 		}
-		qp->modify_flags &=
-			~CMDQ_MODIFY_QP_MODIFY_MASK_VLAN_ID;
 		/* Bono FW require the max_dest_rd_atomic to be >= 1 */
 		if (qp->max_dest_rd_atomic < 1)
 			qp->max_dest_rd_atomic = 1;
